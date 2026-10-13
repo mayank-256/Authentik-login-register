@@ -17,12 +17,29 @@ user_roles = Table(
     Column("role_id", ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True),
 )
 
+role_permissions = Table(
+    "role_permissions",
+    Base.metadata,
+    Column("role_id", ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "permission_id",
+        ForeignKey("permissions.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+class Permission(Base):
+    __tablename__ = "permissions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
 
 class Role(Base):
     __tablename__ = "roles"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(50), unique=True)
+    permissions: Mapped[list[Permission]] = relationship( secondary=role_permissions, lazy="selectin",)
 
 
 class User(Base):
@@ -42,3 +59,11 @@ class User(Base):
     @property
     def role_names(self) -> set[str]:
         return {r.name for r in self.roles}
+
+    @property
+    def permission_names(self) -> set[str]:
+        return {
+            permission.name
+            for role in self.roles
+            for permission in role.permissions
+        }

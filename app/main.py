@@ -13,28 +13,31 @@ from .auth_routes import router as auth_router
 from .config import get_settings
 from .db import Base, SessionLocal, engine, get_db
 from .models import User
-from .security import get_current_user, require_role
+from .security import get_current_user, require_role, requires_permissions
 from .users import seed_roles
 
 settings = get_settings()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI):  # for application's lifecycle
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
-        seed_roles(db)
+        seed_roles(db) #pass session to role-seeding function
     yield
 
 
 app = FastAPI(title="Authentik RBAC demo", lifespan=lifespan)
+
 app.add_middleware(
     SessionMiddleware,
-    secret_key=settings.session_secret,
-    https_only=settings.secure_cookies,
+    secret_key=settings.session_secret, # secret  used to sign session cookie data
+    https_only=settings.secure_cookies, # when true the cookie is sent only over HTTPS
     same_site="lax",
-    max_age=8 * 3600,
+    max_age=8 * 3600, #why is it not written 28800
 )
+
+# register the authentication route
 app.include_router(auth_router)
 
 
@@ -45,7 +48,7 @@ async def http_errors(request: Request, exc: StarletteHTTPException):
         return RedirectResponse(f"/login?next={quote(request.url.path)}", status_code=303)
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
 
-
+# simple home page including only buttons for login, register and my account
 @app.get("/")
 def home():
     return HTMLResponse('<h1>Authentik RBAC demo</h1><p><a href="/login">Log in</a> | <a href="/register">Register</a> | <a href="/me">My profile</a></p><form method="post" action="/logout"><button>Log out</button></form>')
@@ -58,26 +61,36 @@ def me(user: User = Depends(get_current_user)):
         "username": user.username,
         "email": user.email,
         "roles": sorted(user.role_names),
+        "permissions": sorted(user.permission_names),
     }
 
 
 @app.get("/articles")
-def list_articles(user: User = Depends(require_role("viewer"))):
+def list_articles(
+    user: User = Depends(requires_permissions("articles:read")),
+):
     return {"articles": ["Welcome", "Release notes"], "read_by": user.username}
 
 
 @app.post("/articles")
-def create_article(user: User = Depends(require_role("editor"))):
+def create_article(
+    user: User = Depends(requires_permissions("articles:create")),
+):
     return {"created_by": user.username}
 
 
 @app.get("/admin/users")
 def admin_users(
-    _: User = Depends(require_role("admin")),
+    _: User = Depends(requires_permissions("users:list")),
     db: Session = Depends(get_db),
 ):
     users = db.scalars(select(User).order_by(User.id))
     return [
-        {"id": u.id, "username": u.username, "email": u.email, "roles": sorted(u.role_names)}
-        for u in users
+        {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "roles": sorted(user.role_names),
+        }
+        for user in users
     ]

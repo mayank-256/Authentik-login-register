@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .db import get_db
-from .users import sync_user  # defined in the next section
+from .users import sync_user 
 
 settings = get_settings()
 router = APIRouter()
@@ -25,7 +25,7 @@ oauth.register(
     },
 )
 
-
+#Ensures that post-login destination is a relative path to prevent open-redirect attacks that could send users to malicious websites after login
 def safe_next(value: str | None) -> str:
     """Only allow same-site relative paths, to prevent open redirects."""
     if not value:
@@ -42,6 +42,7 @@ async def login(request: Request, next: str = "/"):
     return await oauth.authentik.authorize_redirect(request, settings.redirect_uri)
 
 
+# OIDC callback endpoint
 @router.get("/auth/callback", name="auth_callback")
 async def auth_callback(request: Request, db: Session = Depends(get_db)):
     try:

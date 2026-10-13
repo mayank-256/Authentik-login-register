@@ -84,3 +84,18 @@ def require_role(minimum: str):
         return user
 
     return checker
+def requires_permissions(*required_permissions: str):
+    if not required_permissions:
+        raise ValueError("At least one permission is required")
+
+    def checker(user: User = Depends(get_current_user)) -> User:
+        missing = set(required_permissions) - user.permission_names
+        if missing:
+            names = ", ".join(sorted(missing))
+            raise HTTPException(
+                status_code=403,
+                detail=f"Missing required permission(s): {names}",
+            )
+        return user
+
+    return checker
